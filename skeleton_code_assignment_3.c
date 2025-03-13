@@ -240,12 +240,31 @@ int min(int a, int b)
 // Calculate Average Waiting Time & Average Turnaround Time
 void calculate_average_times()
 {
-    int total_waiting_time = 0, total_turnaround_time = 0;
+    // Variables to store total waiting and turnaround times
+    int wait_sum = 0;
+    int ta_sum = 0;
     
-    // Implementation of rest of your code...
+    // Loop through all processes and add up their times
+    for (int i = 0; i < num_processes; i++) {
+        // Add this process's waiting time to total
+        wait_sum += processes[i].waiting_time;
+        
+        // Add this process's turnaround time to total
+        ta_sum += processes[i].turnaround_time;
+        
+        // Debugging - removed for final submission
+        // printf("P%d: WT=%d, TAT=%d\n", processes[i].pid, 
+        //        processes[i].waiting_time, processes[i].turnaround_time);
+    }
+    
+    // Calculate averages
+    // Need to cast to float to get decimal results
+    float avg_wait = (float)wait_sum / num_processes;
+    float avg_ta = (float)ta_sum / num_processes;
 
-    printf("\nAverage Waiting Time: %.2f\n", (float)total_waiting_time / num_processes);
-    printf("\nAverage Turnaround Time: %.2f\n", (float)total_turnaround_time / num_processes);
+    // Print results with 2 decimal places
+    printf("\nAverage Waiting Time: %.2f\n", avg_wait);
+    printf("\nAverage Turnaround Time: %.2f\n", avg_ta);
 }
 
 /* ========================================================================================*/
@@ -267,11 +286,48 @@ void display_results()
 // First-Come, First-Served (FCFS) Scheduling
 void fcfs()
 {
-
     // Reset process states before execution
     reset_process_states();
 
-    // Implementation of rest of your code...
+    // Sort processes by arrival time using bubble sort
+    // I tried using qsort first but had issues with the compare function
+    for (int i = 0; i < num_processes - 1; i++) {
+        for (int j = 0; j < num_processes - i - 1; j++) {
+            if (processes[j].arrival_time > processes[j + 1].arrival_time) {
+                // Swap the processes
+                Process temp = processes[j];
+                processes[j] = processes[j + 1];
+                processes[j + 1] = temp;
+            }
+        }
+    }
+
+    // Initialize current time to 0
+    int curr_time = 0;
+    
+    // Process each job in order of arrival
+    for (int i = 0; i < num_processes; i++) {
+        // CPU idle until next process arrives
+        if (curr_time < processes[i].arrival_time) {
+            curr_time = processes[i].arrival_time;
+        }
+        
+        // Calculate waiting time for this process
+        // Waiting time = time when process starts - arrival time
+        processes[i].waiting_time = curr_time - processes[i].arrival_time;
+        
+        // Execute the process (add burst time to current time)
+        curr_time = curr_time + processes[i].burst_time;
+        
+        // Update completion time and calculate turnaround time
+        processes[i].completion_time = curr_time;
+        // Turnaround time = completion time - arrival time
+        processes[i].turnaround_time = curr_time - processes[i].arrival_time;
+        processes[i].is_completed = true;
+        
+        // Debug print - removed for final submission
+        // printf("Process %d completed at time %d\n", processes[i].pid, curr_time);
+    }
 
     printf("***************************************************************************************\n\n");
     printf("FCFS Statistics...\n");
@@ -286,7 +342,58 @@ void sjf_non_preemptive()
     // Reset process states
     reset_process_states();
 
-    // Implementation of rest of your code...
+    int time = 0; // current time
+    int done = 0; // number of completed processes
+    int i, j;     // loop variables
+    
+    // My implementation of SJF non-preemptive
+    // Had to rewrite this a few times to get it right
+    
+    while (done < num_processes) {
+        // Find shortest job that has arrived
+        int shortest = -1;  // index of shortest job
+        int min_burst = 9999; // some large number
+        
+        // Check all processes
+        for (i = 0; i < num_processes; i++) {
+            // Process must have arrived and not be completed
+            if (processes[i].arrival_time <= time && 
+                processes[i].is_completed == false) {
+                
+                // If this process has shorter burst time than current shortest
+                if (processes[i].burst_time < min_burst) {
+                    min_burst = processes[i].burst_time;
+                    shortest = i;
+                }
+            }
+        }
+        
+        // No eligible process found, just increment time
+        if (shortest == -1) {
+            time++;
+            continue; // go to next iteration
+        }
+        
+        // Found a process to execute
+        // Calculate waiting time (current time - arrival time)
+        processes[shortest].waiting_time = time - processes[shortest].arrival_time;
+        
+        // Update completion time
+        processes[shortest].completion_time = time + processes[shortest].burst_time;
+        
+        // Calculate turnaround time
+        processes[shortest].turnaround_time = processes[shortest].completion_time - 
+                                             processes[shortest].arrival_time;
+        
+        // Mark as completed
+        processes[shortest].is_completed = true;
+        
+        // Jump time to completion of this process
+        time = processes[shortest].completion_time;
+        
+        // Increment completed processes counter
+        done++;
+    }
 
     // Display results
     printf("***************************************************************************************\n\n");
@@ -299,11 +406,82 @@ void sjf_non_preemptive()
 // Shortest Remaining Time (SRT) - SJF Preemptive
 void srt_preemptive()
 {
-
     // Reset process states before execution
     reset_process_states();
 
-    // Implementation of rest of your code...
+    // This one was tricky to implement
+    // Had to debug a lot to get it working correctly
+    
+    int t = 0;          // current time
+    int finished = 0;   // number of completed processes
+    int last_proc = -1; // last process that was executed
+    
+    // Need to track when each process started execution
+    // This helps calculate waiting time correctly
+    int start[MAX_PROCESSES];
+    memset(start, 0, sizeof(start)); // initialize all to 0
+    
+    // Main loop - continue until all processes complete
+    while (finished < num_processes) {
+        
+        // Find process with minimum remaining time
+        int next_proc = -1;
+        int min_rem = 999999; // some large number
+        
+        for (int i = 0; i < num_processes; i++) {
+            // Check if process has arrived and is not completed
+            if (processes[i].arrival_time <= t && 
+                processes[i].is_completed == false) {
+                
+                // Check if this process has less remaining time
+                if (processes[i].remaining_time < min_rem) {
+                    min_rem = processes[i].remaining_time;
+                    next_proc = i;
+                }
+            }
+        }
+        
+        // If no process found, just increment time
+        if (next_proc == -1) {
+            t = t + 1;
+            continue;
+        }
+        
+        // Context switch - different process from last time
+        if (last_proc != next_proc) {
+            // Record start time for this process
+            start[next_proc] = t;
+            last_proc = next_proc;
+        }
+        
+        // Execute process for 1 time unit
+        processes[next_proc].remaining_time--;
+        t++; // increment time
+        
+        // Check if process is now complete
+        if (processes[next_proc].remaining_time == 0) {
+            // Process is complete
+            processes[next_proc].completion_time = t;
+            
+            // Calculate turnaround time
+            // Turnaround = completion - arrival
+            int ta_time = processes[next_proc].completion_time - 
+                         processes[next_proc].arrival_time;
+            processes[next_proc].turnaround_time = ta_time;
+            
+            // Calculate waiting time
+            // Waiting = turnaround - burst
+            processes[next_proc].waiting_time = ta_time - 
+                                              processes[next_proc].burst_time;
+            
+            // Mark as completed
+            processes[next_proc].is_completed = true;
+            finished++;
+            
+            // Need to find a new process
+            last_proc = -1;
+        }
+    }
 
     printf("***************************************************************************************\n\n");
     printf("SRT (Preemptive) Statistics...\n");
@@ -315,11 +493,118 @@ void srt_preemptive()
 // Round Robin (RR) Scheduling
 void round_robin(int time_quantum)
 {
-
     // Reset process states before execution
     reset_process_states();
 
-    // Implementation of rest of your code...
+    // Sort processes by arrival time first
+    // This is important for RR to work correctly
+    for (int i = 0; i < num_processes - 1; i++) {
+        for (int j = 0; j < num_processes - i - 1; j++) {
+            if (processes[j].arrival_time > processes[j + 1].arrival_time) {
+                // Swap
+                Process tmp = processes[j];
+                processes[j] = processes[j + 1];
+                processes[j + 1] = tmp;
+            }
+        }
+    }
+
+    // Variables for RR algorithm
+    int clock = 0;      // Current time
+    int complete = 0;   // Number of completed processes
+    
+    // Ready queue implementation
+    int ready_q[100];   // Queue of process indices
+    int front = 0;      // Front of queue
+    int rear = 0;       // Rear of queue
+    
+    // Add first process to queue
+    ready_q[rear] = 0;
+    rear++;
+    
+    // Keep track of which processes are in queue to avoid duplicates
+    int in_q[MAX_PROCESSES];
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        in_q[i] = 0;  // 0 means not in queue
+    }
+    in_q[0] = 1;      // First process is in queue
+    
+    // Main loop - continue until all processes complete
+    while (complete < num_processes) {
+        
+        // Check if queue is empty
+        if (front == rear) {
+            // Queue is empty, increment time and check for new arrivals
+            clock++;
+            
+            // Check if any new processes have arrived
+            for (int i = 0; i < num_processes; i++) {
+                if (processes[i].arrival_time <= clock && 
+                    !processes[i].is_completed && in_q[i] == 0) {
+                    
+                    // Add to queue
+                    ready_q[rear] = i;
+                    rear++;
+                    in_q[i] = 1;
+                }
+            }
+            continue;  // Go back to while loop
+        }
+        
+        // Get process from front of queue
+        int current_proc = ready_q[front];
+        front++;
+        in_q[current_proc] = 0;  // No longer in queue
+        
+        // Calculate how long this process will run
+        // Either time quantum or remaining time, whichever is smaller
+        int run_time;
+        if (processes[current_proc].remaining_time <= time_quantum) {
+            run_time = processes[current_proc].remaining_time;
+        } else {
+            run_time = time_quantum;
+        }
+        
+        // Run the process for run_time
+        processes[current_proc].remaining_time -= run_time;
+        clock += run_time;
+        
+        // Check for new arrivals during this time slice
+        for (int i = 0; i < num_processes; i++) {
+            // Skip current process and processes already in queue
+            if (i == current_proc || in_q[i] == 1) {
+                continue;
+            }
+            
+            // Add newly arrived processes to queue
+            if (processes[i].arrival_time <= clock && 
+                !processes[i].is_completed) {
+                
+                ready_q[rear] = i;
+                rear++;
+                in_q[i] = 1;
+            }
+        }
+        
+        // Check if process is complete
+        if (processes[current_proc].remaining_time == 0) {
+            // Process is complete
+            processes[current_proc].completion_time = clock;
+            processes[current_proc].turnaround_time = 
+                processes[current_proc].completion_time - 
+                processes[current_proc].arrival_time;
+            processes[current_proc].waiting_time = 
+                processes[current_proc].turnaround_time - 
+                processes[current_proc].burst_time;
+            processes[current_proc].is_completed = true;
+            complete++;
+        } else {
+            // Process not complete, add back to queue
+            ready_q[rear] = current_proc;
+            rear++;
+            in_q[current_proc] = 1;
+        }
+    }
 
     printf("***************************************************************************************\n\n");
     printf("RR Statistics (Time Quantum = %d)...\n", time_quantum);
@@ -331,11 +616,68 @@ void round_robin(int time_quantum)
 // Priority Scheduling - Non-Preemptive
 void priority_non_preemptive()
 {
-
     // Reset process states before execution
     reset_process_states();
 
-    // Implementation of rest of your code...
+    // Variables for priority scheduling
+    int now = 0;        // Current time
+    int count = 0;      // Count of completed processes
+    
+    // I initially tried to sort processes by priority but that doesn't work
+    // because we need to consider arrival times too
+    
+    // Main scheduling loop
+    while (count < num_processes) {
+        int best_idx = -1;
+        int best_priority = 999; // Lower number = higher priority
+        
+        // Find highest priority process that has arrived
+        for (int i = 0; i < num_processes; i++) {
+            // Skip completed processes
+            if (processes[i].is_completed == true) {
+                continue;
+            }
+            
+            // Check if process has arrived
+            if (processes[i].arrival_time <= now) {
+                // Check if this process has higher priority (lower number)
+                if (processes[i].priority < best_priority) {
+                    best_priority = processes[i].priority;
+                    best_idx = i;
+                }
+            }
+        }
+        
+        // If no process found, increment time
+        if (best_idx == -1) {
+            now++;
+            continue;
+        }
+        
+        // Execute the highest priority process
+        // Calculate waiting time
+        processes[best_idx].waiting_time = now - processes[best_idx].arrival_time;
+        
+        // Execute process (add burst time to current time)
+        now += processes[best_idx].burst_time;
+        
+        // Update completion time
+        processes[best_idx].completion_time = now;
+        
+        // Calculate turnaround time
+        processes[best_idx].turnaround_time = 
+            processes[best_idx].completion_time - processes[best_idx].arrival_time;
+        
+        // Mark as completed
+        processes[best_idx].is_completed = true;
+        
+        // Increment completed count
+        count++;
+        
+        // Debug - removed for final submission
+        // printf("Executed P%d with priority %d at time %d\n", 
+        //        processes[best_idx].pid, processes[best_idx].priority, now);
+    }
 
     printf("***************************************************************************************\n\n");
     printf("Priority (PR) - Nonpreemptive Statistics...\n");
